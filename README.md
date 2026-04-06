@@ -8,6 +8,7 @@ Sistema completo de gestão financeira para academias de ginástica.
 
 ```bash
 npm install
+
 npm run dev
 ```
 
