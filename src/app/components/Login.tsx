@@ -34,7 +34,11 @@ function loadGoogleScript(): Promise<void> {
   return googleScriptPromise;
 }
 
-export function Login() {
+interface LoginProps {
+  onLoginSuccess?: () => void;
+}
+
+export function Login({ onLoginSuccess }: LoginProps) {
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -52,9 +56,11 @@ export function Login() {
   const [forgotError, setForgotError] = useState('');
   const [resetLoading, setResetLoading] = useState(false);
 
+
   // Fake login state
   const FAKE_USER = 'admin';
   const FAKE_PASS = 'admin123';
+
   // const { login, register, registerWithGoogle } = useAuth();
 
   const resetStatusMessages = () => {
@@ -69,9 +75,8 @@ export function Login() {
     setLoading(true);
     setTimeout(() => {
       if (username.trim() === FAKE_USER && password === FAKE_PASS) {
-        // Simula login bem-sucedido: salva flag no localStorage e recarrega
         localStorage.setItem('fake_logged_in', '1');
-        window.location.reload();
+        if (onLoginSuccess) onLoginSuccess();
       } else {
         setError('Usuário ou senha incorretos');
         setLoading(false);
@@ -103,9 +108,8 @@ export function Login() {
 
     setLoading(true);
     setTimeout(() => {
-      // Simula cadastro bem-sucedido: salva flag no localStorage e recarrega
       localStorage.setItem('fake_logged_in', '1');
-      window.location.reload();
+      if (onLoginSuccess) onLoginSuccess();
     }, 900);
   };
 
@@ -113,10 +117,9 @@ export function Login() {
     setError('');
     setGoogleLoading(true);
     setTimeout(() => {
-      // Simula login Google: salva flag no localStorage e recarrega
       localStorage.setItem('fake_logged_in', '1');
       setGoogleLoading(false);
-      window.location.reload();
+      if (onLoginSuccess) onLoginSuccess();
     }, 900);
   };
 
