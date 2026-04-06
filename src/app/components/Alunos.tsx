@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { dataService, Aluno } from '../services/dataService';
 import { Search, Mail, AlertCircle, CheckCircle, XCircle, DollarSign, QrCode, Pencil, Trash2, Send } from 'lucide-react';
 import { format, parseISO, differenceInDays, addMonths, addYears } from 'date-fns';
