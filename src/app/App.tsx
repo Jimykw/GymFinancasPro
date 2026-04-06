@@ -1,5 +1,4 @@
 import { useEffect, useMemo, useState } from 'react';
-import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { Login } from './components/Login';
 import { Layout } from './components/Layout';
 import { Dashboard } from './components/Dashboard';
@@ -15,7 +14,10 @@ import { getNotifications } from './services/notificationService';
 const DISMISSED_NOTIFICATIONS_STORAGE_KEY = 'gym_financas_dismissed_notifications';
 
 function AppContent() {
-  const { isAuthenticated } = useAuth();
+  // Fake login para ambiente estático
+  const [isAuthenticated, setIsAuthenticated] = useState(() => {
+    return localStorage.getItem('fake_logged_in') === '1';
+  });
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [pageFilter, setPageFilter] = useState<string | undefined>(undefined);
   const [dismissedNotifications, setDismissedNotifications] = useState<string[]>(() => {
@@ -43,7 +45,10 @@ function AppContent() {
   }, [dismissedNotifications]);
 
   if (!isAuthenticated) {
-    return <Login />;
+    return <Login onLoginSuccess={() => {
+      setIsAuthenticated(true);
+      setCurrentPage('dashboard');
+    }} />;
   }
 
   const handleNavigate = (page: string, filter?: string) => {
@@ -99,9 +104,9 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
+    <>
       <AppContent />
       <Toaster richColors position="top-right" />
-    </AuthProvider>
+    </>
   );
 }
