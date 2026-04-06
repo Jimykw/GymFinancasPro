@@ -1,517 +1,885 @@
-import React, { useState } from 'react';
-// import { forgotPasswordApi } from '../services/apiClient';
-import { Dumbbell, Lock, User } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { toast } from 'sonner';
+// import { useAuth } from '../contexts/AuthContext';
+import { changePasswordApi } from '../services/apiClient';
+import {
+  Bell,
+  CheckCheck,
+  Calendar,
+  ChevronLeft,
+  ChevronRight,
+  CircleAlert,
+  CircleCheck,
+  LayoutDashboard,
+  Users,
+  TrendingUp,
+  FileText,
+  LogOut,
+  Menu,
+  Moon,
+  Sun,
+  X,
+  Dumbbell,
+  Settings,
+  CreditCard,
+  Download,
+  Plus,
+  UserPlus,
+  Camera,
+} from 'lucide-react';
+import { NotificationItem } from '../services/notificationService';
 
-declare global {
-  interface Window {
-    google?: any;
-  }
+interface LayoutProps {
+  children: React.ReactNode;
+  currentPage: string;
+  dismissedNotifications: string[];
+  notifications: NotificationItem[];
+  onDismissNotification: (id: string) => void;
+  onMarkAllAsRead: () => void;
+  onNavigate: (page: string, filter?: string) => void;
+  onResetNotifications: () => void;
 }
 
-let googleScriptPromise: Promise<void> | null = null;
+interface MenuItem {
+  id: string;
+  label: string;
+  icon: React.ElementType;
+}
 
-function loadGoogleScript(): Promise<void> {
-  if (googleScriptPromise) {
-    return googleScriptPromise;
-  }
+interface PageHeaderConfig {
+  badge: string;
+  title: string;
+  description: string;
+}
 
-  googleScriptPromise = new Promise((resolve, reject) => {
-    if (window.google?.accounts?.oauth2) {
-      resolve();
-      return;
+export default function Layout({
+  children,
+  currentPage,
+  dismissedNotifications,
+  notifications,
+  onDismissNotification,
+  onMarkAllAsRead,
+  onNavigate,
+  onResetNotifications,
+}: LayoutProps) {
+  // FAKE USER para demo offline
+  const [user, setUser] = useState(() => {
+    try {
+      const u = localStorage.getItem('gym_user');
+      return u ? JSON.parse(u) : { name: 'Usuário', email: '', role: 'admin', avatarUrl: null };
+    } catch {
+      return { name: 'Usuário', email: '', role: 'admin', avatarUrl: null };
     }
-
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.async = true;
-    script.defer = true;
-    script.onload = () => resolve();
-    script.onerror = () => reject(new Error('Falha ao carregar SDK do Google'));
-    document.head.appendChild(script);
   });
 
-  return googleScriptPromise;
-}
-
-interface LoginProps {
-  onLoginSuccess?: () => void;
-}
-
-export function Login({ onLoginSuccess }: LoginProps) {
-    // Fake login state para demo
-    const FAKE_USER = 'admin';
-    const FAKE_PASS = 'admin123';
-
-    // const { login, register, registerWithGoogle } = {};
-  const [mode, setMode] = useState<'login' | 'register'>('login');
-  const [username, setUsername] = useState('');
-  const [password, setPassword] = useState('');
-  const [registerName, setRegisterName] = useState('');
-  const [registerUsername, setRegisterUsername] = useState('');
-  const [registerEmail, setRegisterEmail] = useState('');
-  const [registerPassword, setRegisterPassword] = useState('');
-  const [registerConfirmPassword, setRegisterConfirmPassword] = useState('');
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [showForgotPassword, setShowForgotPassword] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState('');
-  const [forgotMessage, setForgotMessage] = useState('');
-  const [forgotError, setForgotError] = useState('');
-  const [resetLoading, setResetLoading] = useState(false);
-
-
-  // const { login, register, registerWithGoogle } = {};
-
-  const resetStatusMessages = () => {
-    setError('');
-    setForgotMessage('');
-    setForgotError('');
+  // Fake logout
+  const logout = () => {
+    localStorage.removeItem('gym_user');
+    window.location.reload();
   };
 
-  const handleLoginSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
-    const user = username.trim();
-    const pass = password.trim();
-    setTimeout(() => {
-      if (user === FAKE_USER && pass === FAKE_PASS) {
-        localStorage.setItem('fake_logged_in', '1');
-        if (onLoginSuccess) onLoginSuccess();
-      } else {
-        setError('Usuário ou senha incorretos');
-        setLoading(false);
+  // Fake updateProfile
+  const updateProfile = async (profile: { name: string; email: string; avatarUrl: string | null }) => {
+    setUser((prev: any) => ({ ...prev, ...profile }));
+    localStorage.setItem('gym_user', JSON.stringify({ ...user, ...profile }));
+    return true;
+  };
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [sidebarHovered, setSidebarHovered] = useState(false);
+  const [darkMode, setDarkMode] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [profileName, setProfileName] = useState('');
+  const [profileEmail, setProfileEmail] = useState('');
+  const [profilePhoto, setProfilePhoto] = useState<string | null>(null);
+  const [profileSaveError, setProfileSaveError] = useState('');
+  const [profileSaveLoading, setProfileSaveLoading] = useState(false);
+  const profilePhotoInputRef = useRef<HTMLInputElement | null>(null);
+  const [currentPassword, setCurrentPassword] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmNewPassword, setConfirmNewPassword] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [passwordSuccess, setPasswordSuccess] = useState('');
+  const [passwordLoading, setPasswordLoading] = useState(false);
+  const [fluxoPeriodoAtivo, setFluxoPeriodoAtivo] = useState<'3' | '6' | '12'>('6');
+  const lastScrollY = useRef(0);
+
+  useEffect(() => {
+    const savedTheme = localStorage.getItem('gym_financas_theme');
+
+    if (savedTheme === 'dark') {
+      setDarkMode(true);
+      document.documentElement.classList.add('dark');
+      return;
+    }
+
+    setDarkMode(false);
+    document.documentElement.classList.remove('dark');
+    localStorage.setItem('gym_financas_theme', 'light');
+  }, []);
+
+  useEffect(() => {
+    const handleScroll = () => {
+      const y = window.scrollY;
+      if (y <= 0) {
+        setSidebarCollapsed(false);
+      } else if (y > lastScrollY.current && y > 80) {
+        setSidebarCollapsed(true);
       }
-    }, 700);
+      lastScrollY.current = y;
+    };
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!profileModalOpen) {
+      setProfileName(user?.name ?? '');
+      setProfileEmail(user?.email ?? '');
+      setProfilePhoto(user?.avatarUrl ?? null);
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordError('');
+      setPasswordSuccess('');
+      setProfileSaveError('');
+    }
+  }, [profileModalOpen, user]);
+
+  const handleProfilePhotoChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      setProfileSaveError('Selecione um arquivo de imagem válido.');
+      return;
+    }
+
+    if (file.size > 2 * 1024 * 1024) {
+      setProfileSaveError('A imagem deve ter no máximo 2MB.');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      setProfilePhoto(String(reader.result || ''));
+      setProfileSaveError('');
+      if (event.target) {
+        event.target.value = '';
+      }
+    };
+    reader.readAsDataURL(file);
   };
 
-  const handleRegisterSubmit = (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    setError('');
+  const handleSaveProfile = async () => {
+    setProfileSaveError('');
 
-    // Validação simples fake
-    if (!registerName.trim() || !registerUsername.trim() || !registerEmail.trim() || !registerPassword.trim()) {
-      setError('Preencha nome, usuário, e-mail e senha.');
-      return;
-    }
-    if (!registerEmail.includes('@')) {
-      setError('Informe um e-mail válido.');
-      return;
-    }
-    if (registerPassword.length < 6) {
-      setError('A senha deve ter no mínimo 6 caracteres.');
-      return;
-    }
-    if (registerPassword !== registerConfirmPassword) {
-      setError('A confirmação de senha não confere.');
+    if (!profileName.trim()) {
+      setProfileSaveError('Informe seu nome.');
       return;
     }
 
-    setLoading(true);
-    setTimeout(() => {
-      localStorage.setItem('fake_logged_in', '1');
-      if (onLoginSuccess) onLoginSuccess();
-    }, 900);
+    if (!profileEmail.trim() || !profileEmail.includes('@')) {
+      setProfileSaveError('Informe um e-mail válido.');
+      return;
+    }
+
+    try {
+      setProfileSaveLoading(true);
+      const ok = await updateProfile({
+        name: profileName.trim(),
+        email: profileEmail.trim().toLowerCase(),
+        avatarUrl: profilePhoto,
+      });
+
+      if (!ok) {
+        setProfileSaveError('Sessão inválida. Faça login novamente.');
+        return;
+      }
+
+      toast.custom(
+        () => (
+          <div className="w-[min(92vw,560px)] rounded-[30px] border border-slate-200 bg-white px-6 py-5 shadow-[0_24px_70px_-28px_rgba(15,23,42,0.55)] dark:border-slate-700 dark:bg-slate-900">
+            <div className="flex items-start gap-3">
+              <CircleCheck className="mt-1 h-5 w-5 flex-shrink-0 text-emerald-500" />
+              <div>
+                <p className="text-[33px] font-semibold leading-[1.08] text-slate-900 dark:text-slate-100">Perfil atualizado com sucesso</p>
+                <p className="mt-2 text-[18px] leading-snug text-slate-500 dark:text-slate-400">Suas alterações foram salvas no sistema.</p>
+              </div>
+            </div>
+          </div>
+        ),
+        { duration: 2000 },
+      );
+    } catch (error: any) {
+      const raw = String(error?.message || 'Erro ao salvar perfil');
+      if (raw.includes('E-mail já cadastrado')) {
+        setProfileSaveError('Esse e-mail já está em uso por outra conta.');
+      } else if (raw.includes('E-mail inválido')) {
+        setProfileSaveError('Informe um e-mail válido.');
+      } else {
+        setProfileSaveError('Não foi possível salvar o perfil agora.');
+      }
+    } finally {
+      setProfileSaveLoading(false);
+    }
   };
 
-  const handleGoogleAuth = () => {
-    setError('');
-    setGoogleLoading(true);
-    setTimeout(() => {
-      localStorage.setItem('fake_logged_in', '1');
-      setGoogleLoading(false);
-      if (onLoginSuccess) onLoginSuccess();
-    }, 900);
+  const toggleDarkMode = () => {
+    setDarkMode((prev) => {
+      const next = !prev;
+      document.documentElement.classList.toggle('dark', next);
+      localStorage.setItem('gym_financas_theme', next ? 'dark' : 'light');
+      return next;
+    });
   };
 
-  const handleForgotPassword = () => {
-    setForgotMessage('');
-    setForgotError('');
+  const menuItems: MenuItem[] = [
+    { id: 'dashboard', label: 'Dashboard', icon: LayoutDashboard },
+    { id: 'alunos', label: 'Alunos & Receitas', icon: Users },
+    { id: 'despesas', label: 'Contas a Pagar', icon: CreditCard },
+    { id: 'fluxo', label: 'Fluxo de Caixa', icon: TrendingUp },
+    { id: 'relatorios', label: 'Relatórios', icon: FileText },
+    { id: 'notificacoes', label: 'Notificações', icon: Bell },
+  ];
 
-    if (!forgotEmail.trim()) {
-      setForgotError('Informe seu e-mail para solicitar redefinição de senha');
+  if (user?.role === 'admin') {
+    menuItems.push({
+      id: 'configuracoes',
+      label: 'Configurações',
+      icon: Settings,
+    });
+  }
+
+  const pageHeaders: Record<string, PageHeaderConfig> = {
+    dashboard: {
+      badge: 'Painel financeiro',
+      title: 'Visao da academia em um so painel.',
+      description: 'Acompanhe saude financeira, metas e alertas para decidir com velocidade.',
+    },
+    alunos: {
+      badge: 'Alunos e receitas',
+      title: 'Gestao comercial e recebimentos lado a lado.',
+      description: 'Controle matriculas, acompanhe inadimplencia e monitore a entrada de caixa.',
+    },
+    despesas: {
+      badge: 'Contas a pagar',
+      title: 'Despesas sob controle para proteger a margem.',
+      description: 'Registre vencimentos, priorize pagamentos e reduza riscos de atraso.',
+    },
+    fluxo: {
+      badge: 'Fluxo de caixa',
+      title: 'Planejamento diario para manter previsibilidade.',
+      description: 'Visualize entradas e saidas para antecipar cenarios e agir com seguranca.',
+    },
+    relatorios: {
+      badge: 'Relatorios executivos',
+      title: 'Indicadores claros para decisao de crescimento.',
+      description: 'Consolide resultados e encontre oportunidades com leituras rapidas.',
+    },
+    notificacoes: {
+      badge: 'Central de notificações',
+      title: 'Alertas e ações em um só lugar.',
+      description: 'Acompanhe inadimplência, contas a pagar e alertas financeiros com ações diretas.',
+    },
+    configuracoes: {
+      badge: 'Painel de configuracoes',
+      title: 'Governanca, backup e integracoes em um so lugar.',
+      description: 'Ajuste pro-labore, mantenha filiais organizadas, configure Supabase e preserve os dados com rotinas de backup e restauracao.',
+    },
+  };
+
+  const activeHeader = pageHeaders[currentPage] ?? pageHeaders.dashboard;
+
+  const handleExportarRelatoriosPDF = () => {
+    window.dispatchEvent(new Event('gymfinancas:export-relatorios-pdf'));
+  };
+
+  const handleExportarRelatoriosExcel = () => {
+    window.dispatchEvent(new Event('gymfinancas:export-relatorios-excel'));
+  };
+
+  const handleAbrirNovoAluno = () => {
+    window.dispatchEvent(new Event('gymfinancas:open-add-aluno'));
+  };
+
+  const handleAbrirNovaDespesa = () => {
+    window.dispatchEvent(new Event('gymfinancas:open-add-despesa'));
+  };
+
+  const handleFluxoPeriodo = (periodo: '3' | '6' | '12') => {
+    setFluxoPeriodoAtivo(periodo);
+    window.dispatchEvent(new CustomEvent('gymfinancas:set-fluxo-periodo', { detail: periodo }));
+  };
+
+  const headerActionButtonClass =
+    'inline-flex items-center gap-2 rounded-xl border border-white/30 bg-white/10 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-white/20';
+
+  const handleChangePassword = async () => {
+    setPasswordError('');
+    setPasswordSuccess('');
+
+    if (!currentPassword.trim() || !newPassword.trim() || !confirmNewPassword.trim()) {
+      setPasswordError('Preencha todos os campos de senha.');
       return;
     }
-    if (!forgotEmail.includes('@')) {
-      setForgotError('Informe um e-mail válido');
+
+    if (newPassword.length < 6) {
+      setPasswordError('A nova senha deve ter no mínimo 6 caracteres.');
       return;
     }
-    setResetLoading(true);
-    setTimeout(() => {
-      setForgotMessage('Se o e-mail estiver cadastrado, você receberá instruções de recuperação. (Simulação)');
-      setForgotEmail('');
-      setResetLoading(false);
-    }, 1200);
+
+    if (newPassword !== confirmNewPassword) {
+      setPasswordError('A confirmação da nova senha não confere.');
+      return;
+    }
+
+    const token = localStorage.getItem('gym_token');
+    if (!token) {
+      setPasswordError('Sessão inválida. Faça login novamente.');
+      return;
+    }
+
+    try {
+      setPasswordLoading(true);
+      const resp = await changePasswordApi(token, {
+        currentPassword,
+        newPassword,
+      });
+      setCurrentPassword('');
+      setNewPassword('');
+      setConfirmNewPassword('');
+      setPasswordSuccess(resp.message || 'Senha atualizada com sucesso.');
+    } catch (error: any) {
+      const raw = String(error?.message || 'Erro ao atualizar senha');
+      let msg = 'Erro ao atualizar senha';
+      if (raw.includes('Senha atual inválida')) msg = 'Senha atual inválida.';
+      else if (raw.includes('deve ser diferente')) msg = 'A nova senha deve ser diferente da atual.';
+      setPasswordError(msg);
+    } finally {
+      setPasswordLoading(false);
+    }
+  };
+
+  const visibleNotifications = notifications.filter((item) => !dismissedNotifications.includes(item.id));
+  const notificationCount = visibleNotifications.filter((item) => item.level !== 'info').length;
+
+  const openNotificationAction = (notification: NotificationItem) => {
+    onNavigate(notification.targetPage, notification.filter);
+    onDismissNotification(notification.id);
+  };
+
+  const markAllAsRead = () => {
+    onMarkAllAsRead();
+  };
+
+  const resetNotifications = () => {
+    onResetNotifications();
+  };
+
+  const dismissNotification = (id: string) => {
+    onDismissNotification(id);
   };
 
   return (
-    <div className="relative h-[100dvh] overflow-hidden bg-[radial-gradient(circle_at_15%_15%,rgba(20,184,166,0.35),transparent_38%),radial-gradient(circle_at_85%_10%,rgba(37,99,235,0.35),transparent_40%),linear-gradient(135deg,#0f766e_0%,#0f172a_52%,#2563eb_100%)] p-1 sm:p-3">
-      <style>{`
-        @keyframes login-fade-up {
-          from {
-            opacity: 0;
-            transform: translateY(14px);
-          }
-          to {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
+    <div className="app-shell min-h-screen bg-slate-50 dark:bg-slate-950 transition-colors">
+      <header className="sticky top-0 z-30 h-16 bg-slate-900/98 backdrop-blur-md text-white border-b border-white/5 shadow-xl">
+        <div className="h-full px-4 flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => setSidebarOpen((prev) => !prev)}
+              className="lg:hidden p-2.5 hover:bg-white/10 rounded-xl transition-all active:scale-95"
+              aria-label={sidebarOpen ? 'Fechar menu' : 'Abrir menu'}
+            >
+              {sidebarOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+            </button>
 
-        .login-enter {
-          animation: login-fade-up 0.45s ease-out both;
-        }
-
-        .login-enter-delay {
-          animation-delay: 0.08s;
-        }
-
-        @media (max-height: 820px) and (min-width: 1024px) {
-          .login-card {
-            border-radius: 18px;
-          }
-
-          .login-left-panel {
-            padding: 1.25rem;
-          }
-
-          .login-right-panel {
-            padding: 0.85rem 1rem;
-          }
-
-          .login-brand-icon {
-            width: 2.75rem;
-            height: 2.75rem;
-            margin-bottom: 0.5rem;
-          }
-
-          .login-title {
-            font-size: 1.9rem;
-            line-height: 1.05;
-          }
-
-          .login-tabs {
-            margin-top: 0.6rem;
-          }
-
-          .login-form {
-            margin-top: 0.55rem;
-          }
-
-          .login-fields {
-            gap: 0.5rem;
-            padding-bottom: 0;
-          }
-
-          .login-fields label {
-            margin-bottom: 0.35rem;
-          }
-
-          .login-fields input {
-            padding-top: 0.5rem;
-            padding-bottom: 0.5rem;
-          }
-
-          .login-left-safe {
-            display: none;
-          }
-
-          .login-actions {
-            margin-top: 0.5rem;
-            gap: 0.45rem;
-          }
-
-          .login-actions button,
-          .login-forgot button {
-            padding-top: 0.6rem;
-            padding-bottom: 0.6rem;
-          }
-
-          .login-subtitle {
-            margin-top: 0.15rem;
-          }
-        }
-      `}</style>
-
-      <div className="mx-auto h-full w-full max-w-6xl">
-        <div className="login-card relative mx-auto h-full w-full max-w-5xl overflow-hidden rounded-[20px] border border-white/20 bg-white/10 shadow-[0_20px_80px_-20px_rgba(2,6,23,0.75)] backdrop-blur-xl sm:rounded-[24px]">
-          <div className="grid grid-cols-1 lg:grid-cols-2 h-full">
-            <div className="login-left-panel hidden lg:flex flex-col justify-between overflow-hidden bg-[linear-gradient(160deg,#042f2e_0%,#0f766e_55%,#0ea5a4_100%)] p-8 text-white xl:p-10">
-              <div className="login-enter">
-                <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-xs font-semibold tracking-[0.18em] uppercase">
-                  GymFinanças Pro
-                </div>
-                <h1 className="mt-6 text-4xl leading-tight text-white">
-                  Gestão financeira com clareza para cada decisão.
-                </h1>
-                <p className="mt-4 max-w-md text-sm text-emerald-50/90">
-                  Controle receitas, despesas e inadimplência em uma experiência unificada, rápida e confiável.
-                </p>
-              </div>
-
-              <div className="login-left-safe login-enter login-enter-delay rounded-2xl border border-white/25 bg-white/10 p-4">
-                <p className="text-xs uppercase tracking-widest text-emerald-100/80">Ambiente seguro</p>
-                <p className="mt-2 text-sm text-emerald-50/95">
-                  Sessão protegida e sincronização dos dados financeiros em tempo real.
-                </p>
-              </div>
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-emerald-400 to-teal-500 shadow-lg shadow-emerald-500/30 flex-shrink-0">
+              <Dumbbell className="w-5 h-5 text-white" />
             </div>
 
-            <div className="login-right-panel overflow-hidden bg-white/95 p-5 sm:p-7 lg:p-8 xl:p-10">
-              <div className="login-enter text-center lg:text-left">
-                <div className="flex items-center justify-center gap-3 lg:justify-start">
-                  <div className="login-brand-icon mx-auto lg:mx-0 inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-gradient-to-br from-emerald-500 to-teal-600 shadow-lg shadow-emerald-500/30">
-                    <Dumbbell className="w-8 h-8 text-white" />
+            <div>
+              <h1 className="text-base font-bold tracking-tight text-white leading-none">GymFinanças</h1>
+              <p className="text-[10px] font-semibold tracking-widest text-emerald-400 uppercase leading-none mt-0.5">Pro</p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 sm:gap-4">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => setNotificationsOpen((prev) => !prev)}
+                className="relative rounded-xl p-2.5 transition-all hover:bg-white/10 hover:scale-105 active:scale-95"
+                title="Notificacoes"
+                aria-label="Notificacoes"
+              >
+                <Bell className="h-5 w-5" />
+                {notificationCount > 0 && (
+                  <span className="absolute -right-1 -top-1 inline-flex h-5 min-w-5 items-center justify-center rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white">
+                    {notificationCount > 9 ? '9+' : notificationCount}
+                  </span>
+                )}
+              </button>
+
+              {notificationsOpen && (
+                <div className="fixed right-4 top-16 z-[60] w-[min(92vw,380px)] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+                  <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3 dark:border-slate-800">
+                    <div>
+                      <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Notificacoes</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">Acoes rapidas de acompanhamento</p>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={markAllAsRead}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-emerald-600 transition-colors hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30"
+                      >
+                        <CheckCheck className="mr-1 inline h-3.5 w-3.5" />
+                        Marcar lidas
+                      </button>
+                      <button
+                        type="button"
+                        onClick={resetNotifications}
+                        className="rounded-lg px-2 py-1 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-800"
+                      >
+                        Reabrir
+                      </button>
+                    </div>
                   </div>
-                  <h2 className="login-title text-4xl tracking-tight text-slate-900">{mode === 'login' ? 'Entrar' : 'Cadastrar'}</h2>
+
+                  <div className="max-h-96 overflow-y-auto p-3">
+                    {visibleNotifications.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-300 p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:text-slate-400">
+                        Sem notificacoes ativas.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {visibleNotifications.map((notification) => (
+                          <div
+                            key={notification.id}
+                            className="rounded-xl border border-slate-200 bg-slate-50/80 p-3 dark:border-slate-800 dark:bg-slate-950/40"
+                          >
+                            <div className="mb-2 flex items-start gap-2">
+                              <CircleAlert
+                                className={`mt-0.5 h-4 w-4 flex-shrink-0 ${
+                                  notification.level === 'high'
+                                    ? 'text-rose-500'
+                                    : notification.level === 'medium'
+                                      ? 'text-amber-500'
+                                      : 'text-sky-500'
+                                }`}
+                              />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">{notification.title}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400">{notification.message}</p>
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => openNotificationAction(notification)}
+                              className="w-full rounded-lg bg-emerald-500 px-3 py-2 text-xs font-semibold text-white transition-colors hover:bg-emerald-600"
+                            >
+                              {notification.actionLabel}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => dismissNotification(notification.id)}
+                              className="mt-2 w-full rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100 dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                            >
+                              Marcar como lida
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
-                <p className="login-subtitle text-slate-500 mt-1.5">
-                  {mode === 'login' ? 'Acesse sua conta para continuar' : 'Crie sua conta para começar'}
+              )}
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleDarkMode}
+              className="p-2.5 hover:bg-white/10 rounded-xl transition-all hover:scale-105 active:scale-95"
+              title={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+              aria-label={darkMode ? 'Ativar modo claro' : 'Ativar modo escuro'}
+            >
+              {darkMode ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setProfileModalOpen(true)}
+              className="hidden sm:flex items-center gap-2.5 border-l border-white/10 pl-3 rounded-xl px-2 py-1 hover:bg-white/10 transition-colors"
+              title="Editar perfil"
+              aria-label="Editar perfil"
+            >
+              {user?.avatarUrl ? (
+                <img
+                  src={user.avatarUrl}
+                  alt="Foto de perfil"
+                  className="h-8 w-8 flex-shrink-0 rounded-full object-cover shadow"
+                />
+              ) : (
+                <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-[11px] font-bold text-white shadow">
+                  {(user?.name ?? 'U').charAt(0).toUpperCase()}
+                </div>
+              )}
+              <div className="text-left">
+                <p className="text-sm font-medium leading-none text-white">{user?.name ?? 'Usuário'}</p>
+                <p className="mt-0.5 text-[10px] leading-none text-slate-400">
+                  {user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
                 </p>
               </div>
+            </button>
 
-              <div className="login-tabs mt-5 grid grid-cols-2 gap-2 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            <button
+              type="button"
+              onClick={logout}
+              className="p-2.5 hover:bg-rose-500/20 text-slate-300 hover:text-rose-400 rounded-xl transition-all hover:scale-105 active:scale-95"
+              title="Sair"
+              aria-label="Sair"
+            >
+              <LogOut className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      </header>
+
+      <div className="flex">
+        <aside
+          onMouseEnter={() => setSidebarHovered(true)}
+          onMouseLeave={() => setSidebarHovered(false)}
+          className={[
+            'fixed lg:sticky lg:top-16 lg:self-start inset-y-0 left-0 z-40',
+            'bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 shadow-xl lg:shadow-none',
+            'flex flex-col overflow-hidden transition-all duration-300 ease-in-out',
+            'mt-16 lg:mt-0 h-[calc(100vh-4rem)]',
+            sidebarOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0',
+            (sidebarCollapsed && !sidebarHovered) ? 'lg:w-14 w-64' : 'w-64',
+          ].join(' ')}
+        >
+          <nav className="flex-1 overflow-y-auto overflow-x-hidden p-2 space-y-0.5 pt-3">
+            {menuItems.map((item) => {
+              const Icon = item.icon;
+              const isActive = currentPage === item.id;
+
+              return (
                 <button
+                  key={item.id}
                   type="button"
+                  title={item.label}
                   onClick={() => {
-                    setMode('login');
-                    resetStatusMessages();
+                    onNavigate(item.id);
+                    setSidebarOpen(false);
                   }}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mode === 'login' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+                  className={[
+                    'group w-full flex items-center rounded-xl transition-all duration-200 text-left text-sm font-medium',
+                    (sidebarCollapsed && !sidebarHovered) ? 'justify-center px-0 py-3' : 'gap-3 px-3.5 py-2.5',
+                    isActive
+                      ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-md shadow-emerald-500/20'
+                      : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-900 dark:hover:text-slate-100',
+                    !isActive && !sidebarCollapsed ? 'hover:translate-x-0.5' : '',
+                  ].join(' ')}
                 >
-                  Entrar
+                  <Icon className={`w-5 h-5 flex-shrink-0 transition-transform duration-200${isActive ? '' : ' group-hover:scale-110'}`} />
+                  {!(sidebarCollapsed && !sidebarHovered) && (
+                    <span className="truncate transition-all duration-200">{item.label}</span>
+                  )}
                 </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setMode('register');
-                    setShowForgotPassword(false);
-                    resetStatusMessages();
-                  }}
-                  className={`rounded-lg px-3 py-2 text-sm font-medium transition-colors ${mode === 'register' ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
-                >
-                  Cadastrar
-                </button>
+              );
+            })}
+          </nav>
+
+          {/* Toggle collapse button */}
+          <div className="border-t border-slate-200 dark:border-slate-800 p-2">
+            <button
+              type="button"
+              onClick={() => setSidebarCollapsed((prev) => !prev)}
+              title={sidebarCollapsed ? 'Expandir menu' : 'Minimizar menu'}
+              className="group w-full flex items-center justify-center rounded-xl py-2.5 text-slate-400 dark:text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-800/70 hover:text-slate-700 dark:hover:text-slate-200 transition-all duration-200"
+            >
+              {sidebarCollapsed
+                ? <ChevronRight className="w-4 h-4 group-hover:scale-110 transition-transform" />
+                : <><ChevronLeft className="w-4 h-4 group-hover:scale-110 transition-transform" /><span className="ml-2 text-xs font-medium">Minimizar</span></>}
+            </button>
+          </div>
+        </aside>
+
+        <main className="flex-1 p-4 lg:p-8 max-w-[1600px] mx-auto w-full min-h-[calc(100vh-4rem)]">
+          <div className="space-y-6 w-full">
+            <section className="rounded-[28px] border border-emerald-100 bg-[linear-gradient(135deg,#0f172a_0%,#0f766e_52%,#14b8a6_100%)] p-6 text-white shadow-xl shadow-slate-950/10 dark:border-slate-800 dark:bg-[linear-gradient(135deg,#020617_0%,#0f172a_50%,#0f766e_100%)] lg:p-8">
+              <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
+                <div>
+                  <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1 text-xs uppercase tracking-[0.2em]">
+                    {activeHeader.badge}
+                  </span>
+                  <h2 className="mt-4 text-3xl font-semibold tracking-tight lg:text-4xl">{activeHeader.title}</h2>
+                  <p className="mt-3 max-w-3xl text-sm text-emerald-50/90 lg:text-base">{activeHeader.description}</p>
+                </div>
+
+                {currentPage === 'relatorios' && (
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={handleExportarRelatoriosPDF}
+                      className={headerActionButtonClass}
+                    >
+                      <Download className="h-4 w-4" />
+                      Exportar PDF
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleExportarRelatoriosExcel}
+                      className={headerActionButtonClass}
+                    >
+                      <Download className="h-4 w-4" />
+                      Exportar Excel
+                    </button>
+                  </div>
+                )}
+
+                {currentPage === 'alunos' && (
+                  <button
+                    type="button"
+                    onClick={handleAbrirNovoAluno}
+                    className={headerActionButtonClass}
+                  >
+                    <UserPlus className="h-4 w-4" />
+                    Novo Aluno
+                  </button>
+                )}
+
+                {currentPage === 'despesas' && (
+                  <button
+                    type="button"
+                    onClick={handleAbrirNovaDespesa}
+                    className={headerActionButtonClass}
+                  >
+                    <Plus className="h-4 w-4" />
+                    Nova Despesa
+                  </button>
+                )}
+
+                {currentPage === 'fluxo' && (
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-xs font-semibold uppercase tracking-wider text-emerald-100">Periodo</span>
+                    {(['3', '6', '12'] as const).map((periodo) => (
+                      <button
+                        key={periodo}
+                        type="button"
+                        onClick={() => handleFluxoPeriodo(periodo)}
+                        className={[
+                          'inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm font-semibold transition-colors',
+                          fluxoPeriodoAtivo === periodo
+                            ? 'border border-white/70 bg-white text-slate-900'
+                            : 'border border-white/30 bg-white/10 text-white hover:bg-white/20',
+                        ].join(' ')}
+                      >
+                        <Calendar className="h-4 w-4" />
+                        {periodo} meses
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+              </div>
+            </section>
+
+            {children}
+          </div>
+        </main>
+      </div>
+
+      {sidebarOpen && (
+        <div
+          className="fixed inset-0 bg-black/50 z-30 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {notificationsOpen && (
+        <div
+          className="fixed inset-0 z-20"
+          onClick={() => setNotificationsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {profileModalOpen && (
+        <div
+          className="fixed inset-0 z-[70] bg-black/50 flex items-center justify-center p-4"
+          onClick={(event) => {
+            if (event.target === event.currentTarget) {
+              setProfileModalOpen(false);
+            }
+          }}
+        >
+          <div className="w-full max-w-md rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl dark:border-slate-800 dark:bg-slate-900">
+            <h3 className="text-lg font-semibold text-slate-900 dark:text-slate-100">Editar Perfil</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Atualize seus dados de perfil no sistema.</p>
+
+            <div className="mt-5 space-y-4">
+              <div className="flex items-center gap-3">
+                {profilePhoto ? (
+                  <img
+                    src={profilePhoto}
+                    alt="Pré-visualização da foto"
+                    className="h-16 w-16 rounded-full object-cover border border-slate-200 dark:border-slate-700"
+                  />
+                ) : (
+                  <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400 to-teal-500 text-xl font-bold text-white">
+                    {(profileName || user?.name || 'U').charAt(0).toUpperCase()}
+                  </div>
+                )}
+
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <label
+                      htmlFor="profile-photo-input"
+                      className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+                    >
+                      <Camera className="h-4 w-4" />
+                      Mudar foto
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!profilePhoto) {
+                          setProfileSaveError('Nenhuma foto cadastrada para remover.');
+                          return;
+                        }
+
+                        setProfilePhoto(null);
+                        setProfileSaveError('');
+                        if (profilePhotoInputRef.current) {
+                          profilePhotoInputRef.current.value = '';
+                        }
+                      }}
+                      className="inline-flex items-center rounded-xl border border-rose-200 px-3 py-2 text-sm font-medium text-rose-600 transition-colors hover:bg-rose-50 dark:border-rose-900/40 dark:text-rose-300 dark:hover:bg-rose-900/20"
+                    >
+                      Excluir foto
+                    </button>
+                  </div>
+                  <input
+                    id="profile-photo-input"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    ref={profilePhotoInputRef}
+                    onChange={handleProfilePhotoChange}
+                  />
+                  <p className="mt-1 text-xs text-slate-400">PNG/JPG até 2MB.</p>
+                </div>
               </div>
 
-              {mode === 'login' ? (
-                <form onSubmit={handleLoginSubmit} className="login-form mt-6 login-enter login-enter-delay">
-                  <div className="mb-4 rounded-xl border border-sky-200 bg-sky-50/80 px-4 py-3 text-sm text-sky-800">
-                    <p className="font-semibold">Acesso de teste</p>
-                    <p>
-                      Usuário: <strong>admin</strong>
-                    </p>
-                    <p>
-                      Senha: <strong>admin123</strong>
-                    </p>
-                  </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Nome</label>
+                <input
+                  type="text"
+                  value={profileName}
+                  onChange={(event) => setProfileName(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  placeholder="Seu nome"
+                />
+              </div>
 
-                  <div className="login-fields space-y-4">
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Usuário</label>
-                    <div className="relative">
-                      <User className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="text"
-                        value={username}
-                        onChange={(e) => { setUsername(e.target.value); if (error) setError(''); }}
-                        className="w-full pl-10 pr-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                        placeholder="Digite seu usuário"
-                        required
-                      />
-                    </div>
-                  </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">E-mail</label>
+                <input
+                  type="email"
+                  value={profileEmail}
+                  onChange={(event) => setProfileEmail(event.target.value)}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                  placeholder="voce@exemplo.com"
+                />
+              </div>
 
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Senha</label>
-                    <div className="relative">
-                      <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
-                        className="w-full pl-10 pr-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                        placeholder="Digite sua senha"
-                        required
-                      />
-                    </div>
-                  </div>
+              <div>
+                <label className="mb-1.5 block text-sm font-medium text-slate-700 dark:text-slate-300">Perfil</label>
+                <input
+                  type="text"
+                  value={user?.role === 'admin' ? 'Administrador' : 'Funcionário'}
+                  disabled
+                  className="w-full rounded-xl border border-slate-200 bg-slate-100 px-3 py-2.5 text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-400"
+                />
+              </div>
 
-                  {error && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {error}
-                    </div>
-                  )}
+              <div className="mt-2 rounded-xl border border-slate-200 p-4 dark:border-slate-700">
+                <p className="text-sm font-semibold text-slate-900 dark:text-slate-100">Trocar Senha</p>
+                <div className="mt-3 space-y-3">
+                  <input
+                    type="password"
+                    value={currentPassword}
+                    onChange={(event) => setCurrentPassword(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    placeholder="Senha atual"
+                  />
+                  <input
+                    type="password"
+                    value={newPassword}
+                    onChange={(event) => setNewPassword(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    placeholder="Nova senha"
+                  />
+                  <input
+                    type="password"
+                    value={confirmNewPassword}
+                    onChange={(event) => setConfirmNewPassword(event.target.value)}
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-900 outline-none transition-colors focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/30 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-100"
+                    placeholder="Confirmar nova senha"
+                  />
+                  <button
+                    type="button"
+                    onClick={handleChangePassword}
+                    disabled={passwordLoading}
+                    className="w-full rounded-xl bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+                  >
+                    {passwordLoading ? 'Atualizando...' : 'Atualizar senha'}
+                  </button>
+                </div>
+              </div>
 
-                  <div className="pt-1 text-right">
-                    <button
-                      type="button"
-                      className="text-sm text-emerald-600 hover:text-emerald-700 font-medium"
-                      onClick={() => {
-                        setShowForgotPassword((prev) => !prev);
-                        setForgotMessage('');
-                        setForgotError('');
-                      }}
-                    >
-                      {showForgotPassword ? 'Voltar ao login' : 'Esqueceu sua senha?'}
-                    </button>
-                  </div>
-                  </div>
-
-                  {showForgotPassword && (
-                    <div className="login-forgot mt-2 rounded-2xl border border-emerald-200/80 bg-emerald-50/70 p-4">
-                      <h3 className="text-base font-semibold text-emerald-700 mb-3">Redefinição de senha</h3>
-
-                      <div className="space-y-4">
-                        <div>
-                          <label className="block text-slate-700 mb-2">E-mail</label>
-                          <input
-                            type="email"
-                            value={forgotEmail}
-                            onChange={(e) => setForgotEmail(e.target.value)}
-                            className="w-full px-4 py-3 border border-slate-200 rounded-xl bg-white/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none"
-                            placeholder="Digite seu e-mail"
-                          />
-                        </div>
-
-                        {forgotError && (
-                          <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                            {forgotError}
-                          </div>
-                        )}
-
-                        {forgotMessage && (
-                          <div className="rounded-xl border border-emerald-200 bg-white px-4 py-3 text-sm text-emerald-700">
-                            {forgotMessage}
-                          </div>
-                        )}
-
-                        <button
-                          type="button"
-                          onClick={handleForgotPassword}
-                          className="w-full rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white py-3 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
-                          disabled={resetLoading}
-                        >
-                          {resetLoading ? 'Enviando...' : 'Solicitar redefinição'}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="login-actions mt-4 space-y-3">
-                    <button
-                      type="submit"
-                      className="w-full rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 py-3.5 text-white shadow-lg shadow-emerald-500/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/35 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                      disabled={loading}
-                    >
-                      {loading ? 'Entrando...' : 'Entrar'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleAuth}
-                      disabled={googleLoading}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-3.5 text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {googleLoading ? 'Conectando com Google...' : 'Entrar com Google'}
-                    </button>
-                  </div>
-                </form>
-              ) : (
-                <form onSubmit={handleRegisterSubmit} className="login-form mt-6 login-enter login-enter-delay">
-                  <div className="login-fields space-y-4">
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Nome</label>
-                    <input
-                      type="text"
-                      value={registerName}
-                      onChange={(e) => setRegisterName(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                      placeholder="Seu nome"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Usuário</label>
-                    <input
-                      type="text"
-                      value={registerUsername}
-                      onChange={(e) => setRegisterUsername(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                      placeholder="Escolha um usuário"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">E-mail</label>
-                    <input
-                      type="email"
-                      value={registerEmail}
-                      onChange={(e) => setRegisterEmail(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                      placeholder="voce@exemplo.com"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Senha</label>
-                    <input
-                      type="password"
-                      value={registerPassword}
-                      onChange={(e) => setRegisterPassword(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                      placeholder="Mínimo 6 caracteres"
-                      required
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-slate-700 mb-2.5">Confirmar senha</label>
-                    <input
-                      type="password"
-                      value={registerConfirmPassword}
-                      onChange={(e) => setRegisterConfirmPassword(e.target.value)}
-                      className="w-full px-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
-                      placeholder="Repita sua senha"
-                      required
-                    />
-                  </div>
-
-                  {error && (
-                    <div className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">
-                      {error}
-                    </div>
-                  )}
-                  </div>
-
-                  <div className="login-actions mt-4 space-y-3">
-                    <button
-                      type="submit"
-                      className="w-full rounded-xl bg-gradient-to-r from-emerald-500 via-teal-500 to-cyan-500 py-3.5 text-white shadow-lg shadow-emerald-500/30 transition-all hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/35 disabled:opacity-70 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-                      disabled={loading}
-                    >
-                      {loading ? 'Cadastrando...' : 'Criar conta'}
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={handleGoogleAuth}
-                      disabled={googleLoading}
-                      className="w-full rounded-xl border border-slate-300 bg-white py-3.5 text-slate-700 transition-colors hover:bg-slate-100 disabled:opacity-70 disabled:cursor-not-allowed"
-                    >
-                      {googleLoading ? 'Conectando com Google...' : 'Cadastrar com Google'}
-                    </button>
-                  </div>
-                </form>
+              {passwordError && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300">
+                  {passwordError}
+                </p>
               )}
+              {passwordSuccess && (
+                <p className="rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-900/20 dark:text-emerald-300">
+                  {passwordSuccess}
+                </p>
+              )}
+              {profileSaveError && (
+                <p className="rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700 dark:border-rose-900/50 dark:bg-rose-900/20 dark:text-rose-300">
+                  {profileSaveError}
+                </p>
+              )}
+            </div>
+
+            <div className="mt-6 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={handleSaveProfile}
+                disabled={profileSaveLoading}
+                className="rounded-xl bg-emerald-600 px-4 py-2 text-sm font-medium text-white hover:bg-emerald-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed"
+              >
+                {profileSaveLoading ? 'Salvando...' : 'Salvar perfil'}
+              </button>
+              <button
+                type="button"
+                onClick={() => setProfileModalOpen(false)}
+                className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 hover:bg-slate-100 transition-colors dark:border-slate-700 dark:text-slate-300 dark:hover:bg-slate-800"
+              >
+                Fechar
+              </button>
             </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }
