@@ -73,8 +73,10 @@ export function Login({ onLoginSuccess }: LoginProps) {
     e.preventDefault();
     setError('');
     setLoading(true);
+    const user = username.trim();
+    const pass = password.trim();
     setTimeout(() => {
-      if (username.trim() === FAKE_USER && password === FAKE_PASS) {
+      if (user === FAKE_USER && pass === FAKE_PASS) {
         localStorage.setItem('fake_logged_in', '1');
         if (onLoginSuccess) onLoginSuccess();
       } else {
@@ -313,7 +315,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
                       <input
                         type="text"
                         value={username}
-                        onChange={(e) => setUsername(e.target.value)}
+                        onChange={(e) => { setUsername(e.target.value); if (error) setError(''); }}
                         className="w-full pl-10 pr-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
                         placeholder="Digite seu usuário"
                         required
@@ -328,7 +330,7 @@ export function Login({ onLoginSuccess }: LoginProps) {
                       <input
                         type="password"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => { setPassword(e.target.value); if (error) setError(''); }}
                         className="w-full pl-10 pr-4 py-3.5 border border-slate-200 rounded-xl bg-slate-50/80 focus:ring-2 focus:ring-emerald-500/40 focus:border-emerald-500 outline-none transition-all"
                         placeholder="Digite sua senha"
                         required
