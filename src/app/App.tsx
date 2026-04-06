@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Login } from './components/Login';
-import { Layout } from './components/Layout';
+import Layout from './components/Layout';
 import { Dashboard } from './components/Dashboard';
 import { Alunos } from './components/Alunos';
 import { Despesas } from './components/Despesas';
