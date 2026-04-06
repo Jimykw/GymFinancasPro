@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { useAuth } from '../contexts/AuthContext';
-import { forgotPasswordApi } from '../services/apiClient';
+// import { forgotPasswordApi } from '../services/apiClient';
 import { Dumbbell, Lock, User } from 'lucide-react';
 
 declare global {
@@ -34,7 +33,16 @@ function loadGoogleScript(): Promise<void> {
   return googleScriptPromise;
 }
 
-export function Login() {
+interface LoginProps {
+  onLoginSuccess?: () => void;
+}
+
+export function Login({ onLoginSuccess }: LoginProps) {
+    // Fake login state para demo
+    const FAKE_USER = 'admin';
+    const FAKE_PASS = 'admin123';
+
+    // const { login, register, registerWithGoogle } = {};
   const [mode, setMode] = useState<'login' | 'register'>('login');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -53,7 +61,7 @@ export function Login() {
   const [resetLoading, setResetLoading] = useState(false);
 
 
-  const { login, register, registerWithGoogle } = useAuth();
+  // const { login, register, registerWithGoogle } = {};
 
   const resetStatusMessages = () => {
     setError('');
@@ -64,133 +72,58 @@ export function Login() {
   const handleLoginSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
-
     setLoading(true);
-    login(username.trim(), password)
-      .then((ok: boolean) => {
-        if (!ok) {
-          setError('Usuário ou senha incorretos');
-        }
-      })
-      .catch(() => {
+    setTimeout(() => {
+      if (username.trim() === FAKE_USER && password === FAKE_PASS) {
+        localStorage.setItem('fake_logged_in', '1');
+        if (onLoginSuccess) onLoginSuccess();
+      } else {
         setError('Usuário ou senha incorretos');
-      })
-      .finally(() => {
         setLoading(false);
-      });
+      }
+    }, 700);
   };
 
   const handleRegisterSubmit = (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     setError('');
 
+    // Validação simples fake
     if (!registerName.trim() || !registerUsername.trim() || !registerEmail.trim() || !registerPassword.trim()) {
       setError('Preencha nome, usuário, e-mail e senha.');
       return;
     }
-
     if (!registerEmail.includes('@')) {
       setError('Informe um e-mail válido.');
       return;
     }
-
     if (registerPassword.length < 6) {
       setError('A senha deve ter no mínimo 6 caracteres.');
       return;
     }
-
     if (registerPassword !== registerConfirmPassword) {
       setError('A confirmação de senha não confere.');
       return;
     }
 
     setLoading(true);
-    register({
-      name: registerName.trim(),
-      username: registerUsername.trim(),
-      email: registerEmail.trim().toLowerCase(),
-      password: registerPassword,
-    })
-      .then((ok: boolean) => {
-        if (!ok) {
-          setError('Não foi possível concluir o cadastro');
-        }
-      })
-      .catch((err: any) => {
-        const raw = String(err?.message || 'Erro de cadastro');
-        if (raw.includes('Usuário já cadastrado')) {
-          setError('Esse usuário já está em uso.');
-        } else if (raw.includes('E-mail já cadastrado')) {
-          setError('Esse e-mail já está em uso.');
-        } else {
-          setError('Não foi possível concluir o cadastro');
-        }
-      })
-      .finally(() => {
-        setLoading(false);
-      });
+    setTimeout(() => {
+      localStorage.setItem('fake_logged_in', '1');
+      if (onLoginSuccess) onLoginSuccess();
+    }, 900);
   };
 
-  const handleGoogleAuth = async () => {
+  const handleGoogleAuth = () => {
     setError('');
-    const clientId = (import.meta as any).env?.VITE_GOOGLE_CLIENT_ID;
-    if (!clientId) {
-      setError('Configure VITE_GOOGLE_CLIENT_ID para habilitar login com Google.');
-      return;
-    }
-
-    try {
-      setGoogleLoading(true);
-      await loadGoogleScript();
-
-      if (!window.google?.accounts?.oauth2) {
-        throw new Error('SDK do Google indisponível');
-      }
-
-      const tokenClient = window.google.accounts.oauth2.initTokenClient({
-        client_id: clientId,
-        scope: 'openid email profile',
-        callback: async (resp: any) => {
-          try {
-            if (!resp?.access_token) {
-              throw new Error(resp?.error || 'Falha na autenticação Google');
-            }
-
-            const userInfoResp = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
-              headers: {
-                Authorization: `Bearer ${resp.access_token}`,
-              },
-            });
-
-            if (!userInfoResp.ok) {
-              throw new Error('Não foi possível obter dados do Google');
-            }
-
-            const userInfo = await userInfoResp.json();
-            const name = String(userInfo?.name || '').trim();
-            const email = String(userInfo?.email || '').trim();
-
-            if (!name || !email) {
-              throw new Error('Dados do Google inválidos');
-            }
-
-            await registerWithGoogle({ name, email });
-          } catch {
-            setError('Falha ao autenticar com Google. Tente novamente.');
-          } finally {
-            setGoogleLoading(false);
-          }
-        },
-      });
-
-      tokenClient.requestAccessToken({ prompt: 'consent' });
-    } catch {
-      setError('Falha ao iniciar autenticação com Google.');
+    setGoogleLoading(true);
+    setTimeout(() => {
+      localStorage.setItem('fake_logged_in', '1');
       setGoogleLoading(false);
-    }
+      if (onLoginSuccess) onLoginSuccess();
+    }, 900);
   };
 
-  const handleForgotPassword = async () => {
+  const handleForgotPassword = () => {
     setForgotMessage('');
     setForgotError('');
 
@@ -198,25 +131,16 @@ export function Login() {
       setForgotError('Informe seu e-mail para solicitar redefinição de senha');
       return;
     }
-
     if (!forgotEmail.includes('@')) {
       setForgotError('Informe um e-mail válido');
       return;
     }
-
     setResetLoading(true);
-
-    try {
-      const response = await forgotPasswordApi({ email: forgotEmail.trim().toLowerCase() });
-      setForgotMessage(
-        response.message || 'Se o e-mail estiver cadastrado, você receberá instruções de recuperação.'
-      );
+    setTimeout(() => {
+      setForgotMessage('Se o e-mail estiver cadastrado, você receberá instruções de recuperação. (Simulação)');
       setForgotEmail('');
-    } catch {
-      setForgotError('Não foi possível processar sua solicitação agora. Tente novamente.');
-    } finally {
       setResetLoading(false);
-    }
+    }, 1200);
   };
 
   return (
