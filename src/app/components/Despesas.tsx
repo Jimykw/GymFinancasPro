@@ -1,4 +1,4 @@
-﻿import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { dataService, Despesa } from '../services/dataService';
 import { Calendar, Search, CheckCircle, Clock, Pencil, CircleCheck, X } from 'lucide-react';
 import { format, parseISO, addDays, isBefore } from 'date-fns';
