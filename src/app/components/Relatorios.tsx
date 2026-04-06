@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { dataService } from '../services/dataService';
 import { FileText, TrendingUp, BarChart3, PieChart } from 'lucide-react';
 import { format, subMonths, startOfMonth, endOfMonth } from 'date-fns';
